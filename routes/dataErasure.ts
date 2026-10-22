@@ -101,8 +101,30 @@ router.post('/', (req: Request<Record<string, unknown>, Record<string, unknown>,
       }
 
       if (req.body.layout) {
-        const filePath: string = path.resolve(req.body.layout).toLowerCase()
-        const isForbiddenFile: boolean = (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
+        const viewsSetting = req.app.get('views')
+        const viewsDirs: string[] = [path.resolve(__dirname, '../views')]
+        if (typeof viewsSetting === 'string') {
+          viewsDirs.push(path.resolve(viewsSetting))
+        } else if (Array.isArray(viewsSetting)) {
+          viewsDirs.push(...viewsSetting.map((v: string) => path.resolve(v)))
+        }
+
+        const isInsideViews = (p: string): boolean => {
+          return viewsDirs.some((dir) => {
+            const rel = path.relative(dir, p)
+            return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+          })
+        }
+
+        const isAllowedLayout = typeof req.body.layout === 'string' &&
+          !req.body.layout.includes('\0') &&
+          (path.isAbsolute(req.body.layout)
+            ? isInsideViews(path.resolve(req.body.layout))
+            : (!req.body.layout.includes('..') &&
+               (viewsDirs.some((dir) => isInsideViews(path.resolve(dir, req.body.layout as string))) || isInsideViews(path.resolve(req.body.layout as string)))))
+
+        const filePath: string = typeof req.body.layout === 'string' ? path.resolve(req.body.layout).toLowerCase() : ''
+        const isForbiddenFile: boolean = !isAllowedLayout || (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
         if (!isForbiddenFile) {
           res.render('dataErasureResult', {
             ...req.body,
